@@ -1,24 +1,42 @@
 #include <Wire.h>
 #include <SparkFun_MCP9600.h>
+#include <Encoder.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
-MCP9600 thermocouple;
+  MCP9600 thermocouple;
 
   const int heaterPin = 9; // PWM pin for the heater
-  const int potentiometerPin = A2;
+  // Define pins for the rotary encoder
+  const int clkPin = 2; // Clock pin
+  const int dtPin = 3;  // Data pin
+  const int swPin = 4;  // Switch pin
+
+  Encoder myEnc(clkPin, dtPin);
+  int lastPosition = 0;
+
+  // Define OLED display size
+  #define SCREEN_WIDTH 128
+  #define SCREEN_HEIGHT 32
+  #define SCREEN_ADDRESS 0x3C
+  // Initialize OLED display on I2C (A4 = SDA, A5 = SCL for Arduino Uno)
+  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+  unsigned long lastDisplayUpdate = 0; // Timestamp of the last display update
+  const unsigned long displayInterval = 100; // 10 Hz = 100 ms interval
 
   float targetTemp = 0.0;
   float integralSum = 0.0;
   float prevError = 0.0;
   unsigned long prevTime = 0;
 
-  float Kp = 2.0;
-  float Ki = 0;
-  float Kd = 0.1;
+  float Kp = 38.0;
+  float Ki = 0.38;
+  float Kd = 2.8;
 
   const float maxVoltage = 28.0; // Maximum operating voltage
-  const float maxTemp = 149.0;   // Maximum temperature at maxVoltage
+  const float maxTemp = 150.0;   // Maximum temperature at maxVoltage
   // User-defined power supply voltage
-  float userVoltage = 15.0; // Example: 15V power source (update this as needed)
+  float userVoltage = 25.0; // Example: 15V power source (update this as needed)
 
   float prevSetpoint = targetTemp;
   
@@ -37,28 +55,52 @@ void setup() {
 
   Serial.println("PID Control with MCP9600 Initialized");
 
+  // Initialize the button pin
+  pinMode(swPin, INPUT_PULLUP); // Use internal pull-up resistor for the button
+
+  Serial.println("Encoder with Library Initialized!");
+
+  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
  
 }
 
 void loop() {
-  // POTENTIOMETER INPUT
-  int userSetTemp = analogRead(potentiometerPin);
-  // Map the analog value (0-1023) to the temperature range (0-maxTemp)
-  float targetTemp = map(userSetTemp, 0, 1023, 25, maxTemp);
-  // Calculate the maximum achievable temperature based on userVoltage
+  // ENCODER USER INPUT
   float Tmax = (userVoltage / maxVoltage) * maxTemp;
   // Clamp the target temperature to the calculated maximum achievable value
-  if (targetTemp > Tmax) {
-      targetTemp = Tmax;
+ 
+  int newPosition = myEnc.read() / 2; // Dividing by 2 to account for double increments
+
+  // Check if the position has changed
+  if (newPosition != lastPosition) {
+    targetTemp += (newPosition - lastPosition); // Increment setpoint by the difference
+    lastPosition = newPosition;
+
+    // Constrain the setpoint to a valid range (e.g., 0 to 150)
+    targetTemp = constrain(targetTemp, 0, Tmax);
   }
-  //Serial.print("target: ");
-  //Serial.println(targetTemp);
+
+  // Check if the button is pressed
+  if (digitalRead(swPin) == LOW) {
+    Serial.println("Button Pressed!");
+    delay(200); // Debounce delay
+  }
 
   if (targetTemp != prevSetpoint) {
     integralSum = 0.0; // Reset the accumulated error
     prevSetpoint = targetTemp; // Update the previous setpoint
     Serial.println("Setpoint changed. Resetting integral term.");
 }
+
 
   // PID CONTROLLER
   float currentTemp = readSensorTemp();
@@ -73,24 +115,22 @@ void loop() {
   //Serial.println(deltaTime);
   // Calculate proportional error
   float propTerm = Kp*error;
-  Serial.print("prop: ");
-  Serial.print(propTerm);
+  //Serial.print("prop: ");
+  //Serial.print(propTerm);
 
   //Calculate the integral error
-  float midpointInterp = prevError + ((deltaTime/2.0 - prevTime)/deltaTime)*(error-prevError); //midpoint interpolation
-  //Serial.print("interpMid: ");
-  //Serial.println(midpointInterp);
-  integralSum += deltaTime * (midpointInterp); //midpoint rule integration
+  integralSum += deltaTime * (error);
   //Serial.print("sum: ");
   //Serial.println(integralSum);
+  integralSum = constrain(integralSum, -50, 50);
   float integTerm = Ki*(integralSum);
-  Serial.print("   integral: ");
-  Serial.print(integTerm);
+  //Serial.print("   integral: ");
+  //Serial.print(integTerm);
 
   //Calculate the derivative error
   float derivTerm = Kd*(error - prevError)/deltaTime;
-  Serial.print("   deriv: ");
-  Serial.println(derivTerm);
+  //Serial.print("   deriv: ");
+  //Serial.print(derivTerm);
 
   float output = propTerm + integTerm + derivTerm;
   
@@ -99,18 +139,43 @@ void loop() {
 
 
  // Step 9: Log data for debugging
-  Serial.print("Setpoint: ");
+  Serial.print("   Setpoint: ");
   Serial.print(targetTemp);
   Serial.print(" °C, Current Temp: ");
   Serial.print(currentTemp);
   Serial.print(" °C, Output: ");
   Serial.println(output);
 
-
   prevError = error;
   prevTime = currentTime;
 
-  delay(1000);
+  // OLED DISPLAY 
+  if (millis() - lastDisplayUpdate >= displayInterval) {
+    lastDisplayUpdate = millis(); // Update the timestamp
+
+    // Update the display
+    display.clearDisplay();
+
+    // Line 1
+    display.setCursor(0, 0);
+    display.println("Target Temperature");
+
+    // Line 2
+    display.setCursor(0, 8);
+    display.println(targetTemp, 2);
+
+    // Line 3
+    display.setCursor(0, 16);
+    display.println("Current Temperature");
+
+    // Line 4
+    display.setCursor(0, 24);
+    display.println(currentTemp, 2);
+
+    display.display(); // Render the text
+  }
+
+  delay(50);
 }
 
 float readSensorTemp(){
