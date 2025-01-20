@@ -261,4 +261,3 @@ float readSensorTemp() {
   return currentTemp;
 }
 
-
