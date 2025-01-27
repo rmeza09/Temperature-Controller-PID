@@ -6,7 +6,7 @@
 
 MCP9600 thermocouple;
 
-const int heaterPin = 9; // PWM pin for the heater
+const int heaterPin = 6; // PWM pin for the heater
 
 // Rotary Encoder Pins
 const int clkPin = 2; // Clock pin
@@ -39,7 +39,7 @@ float prevError = 0.0;
 unsigned long prevTime = 0;
 
 // PID Constants
-float Kp = 38.0;
+float Kp = 8.0;
 float Ki = 0.38;
 float Kd = 2.8;
 
@@ -64,7 +64,7 @@ void setup() {
     Serial.println("MCP9600 not detected. Check connections.");
     while (1);
   }
-  thermocouple.setThermocoupleType(TYPE_K);
+  thermocouple.setThermocoupleType(TYPE_J);
   thermocouple.setFilterCoefficient(3);
 
   pinMode(heaterPin, OUTPUT);
@@ -140,10 +140,13 @@ void loop() {
   float derivTerm = Kd * (error - prevError) / deltaTime;
 
   float output = propTerm + integTerm + derivTerm;
+
+  // if in setttings close the output gate
   output = constrain(output, 0, 255);
   if (displayMode!=0){
     output = 0;
   }
+  // apply the pwm signal to the heater
   analogWrite(heaterPin, (int)output);
 
   Serial.print("Setpoint: ");
@@ -156,11 +159,11 @@ void loop() {
   prevError = error;
   prevTime = currentTime;
 
-  // **OLED DISPLAY UPDATE (10 Hz)**
+  // OLED DISPLAY UPDATE at 10 Hz with four different display modes
   if (millis() - lastDisplayUpdate >= displayInterval) {
     lastDisplayUpdate = millis();
 
-    // **Update 128x64 OLED (Temperature Display)**
+    // clear displays routinely 
     display2.clearDisplay();
     display2.setTextSize(2); // Enlarged text (16 pixels per line)
     display2.setTextColor(SSD1306_WHITE);
@@ -181,15 +184,16 @@ void loop() {
         display2.print(currentTemp, 2);
         display2.println("  C");
 
-        display2.display(); // Render to OLED 2
+        display2.display();
 
-        // **Update 128x32 OLED (PID Values Display)**
+        // Update 128x32 OLED (PID Values Display)
         display1.clearDisplay();
-        display1.setTextSize(1); // Keep text size normal (8 pixels per line)
+        display1.setTextSize(1); // text size (8 pixels per line)
         display1.setTextColor(SSD1306_WHITE);
 
         display1.setCursor(0, 0);
-        display1.println("PID Values");
+        display1.print("Output PWM: ");
+        display1.print(output, 2);
         display1.setCursor(0, 8);
         display1.print("Kp: ");
         display1.println(Kp, 2);
@@ -199,7 +203,7 @@ void loop() {
         display1.setCursor(0, 24);
         display1.print("Kd: ");
         display1.println(Kd, 2);
-        display1.display(); // Render to OLED 1
+        display1.display();
         break;
 
         case 1:
@@ -214,7 +218,6 @@ void loop() {
             display1.println("SETTINGS");
             display1.display();
 
-        
         break;
 
         case 2:
@@ -228,7 +231,6 @@ void loop() {
             display1.setCursor(10, 10);
             display1.println("SETTINGS");
             display1.display();
-            
             
         break;
 
@@ -244,10 +246,8 @@ void loop() {
             display1.println("SETTINGS");
             display1.display();
             
-            
         break;
     }
-
   }
 
   delay(50);
