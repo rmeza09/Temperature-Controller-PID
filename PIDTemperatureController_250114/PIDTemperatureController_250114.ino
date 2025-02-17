@@ -39,12 +39,12 @@ float prevError = 0.0;
 unsigned long prevTime = 0;
 
 // PID Constants
-float Kp = 8.0;
-float Ki = 0.38;
-float Kd = 2.8;
+float Kp = 21;
+float Ki = 0.8;
+float Kd = 2.5;
 
 const float maxVoltage = 28.0; // Maximum operating voltage
-const float maxTemp = 150.0;   // Maximum temperature at maxVoltage
+const float maxTemp = 100;   // Maximum temperature at maxVoltage
 
 // User-defined power supply voltage
 float userVoltage = 25.0;
