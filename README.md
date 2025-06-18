@@ -17,7 +17,8 @@ Completed 01/21/2025
 - Adjustable target temperature in Celcius.
 - Two OLED displays for temperature and controller status read out.
 - Manual adjustment of controller parameters (Kp, Ki, Pd) while in use.
-- PWM value 
+- Live PWM value reported from feedback control response.
+- I2C serial communication protocol.
 
 ## 🛠️ Hardware
 - Arduino Nano Every
